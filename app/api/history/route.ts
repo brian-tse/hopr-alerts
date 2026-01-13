@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseAdmin } from '@/app/lib/supabase';
+import { supabaseAdmin } from '@/app/lib/supabase';
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -12,10 +12,8 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const supabase = getSupabaseAdmin();
-
   // Get check history for this alert
-  const { data: history, error } = await supabase
+  const { data: history, error } = await supabaseAdmin
     .from('hopr_check_history')
     .select('*')
     .eq('alert_id', alertId)
