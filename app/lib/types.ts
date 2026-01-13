@@ -14,10 +14,12 @@ export type Alert = {
 
 export type CheckHistory = {
   id: string;
-  check_time: string;
-  found_slots: ReservationSlot[];
+  alert_id: string;
+  checked_at: string;
+  target_date: string;
+  slots_found: number;
+  found_slots: ReservationSlot[] | null;
   error_message: string | null;
-  duration_ms: number | null;
   status: 'success' | 'error' | 'no_availability';
 };
 
