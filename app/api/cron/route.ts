@@ -122,6 +122,16 @@ async function processAlert(alert: Alert): Promise<CheckResult[]> {
         `Found ${filteredSlots.length} slot(s) in time window ${alert.window_start}-${alert.window_end}`
       );
 
+      // Log this check to history
+      await supabaseAdmin.from('hopr_check_history').insert({
+        alert_id: alert.id,
+        target_date: targetDate,
+        slots_found: filteredSlots.length,
+        found_slots: filteredSlots,
+        error_message: null,
+        status: filteredSlots.length > 0 ? 'success' : 'no_availability',
+      });
+
       if (filteredSlots.length > 0) {
         // Send notifications
         const notificationResults = await sendAvailabilityNotification(
@@ -145,6 +155,18 @@ async function processAlert(alert: Alert): Promise<CheckResult[]> {
       }
     } catch (error) {
       console.error(`Error checking ${day} for alert ${alert.id}:`, error);
+
+      // Log error to history
+      const targetDate = getNextDayOfWeek(day);
+      await supabaseAdmin.from('hopr_check_history').insert({
+        alert_id: alert.id,
+        target_date: targetDate,
+        slots_found: 0,
+        found_slots: null,
+        error_message: error instanceof Error ? error.message : 'Unknown error',
+        status: 'error',
+      });
+
       // Continue with other days even if one fails
     }
   }

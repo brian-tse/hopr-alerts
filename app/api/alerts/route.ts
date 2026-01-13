@@ -77,6 +77,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    // Trigger an immediate check for the newly created alert (non-blocking)
+    if (data?.id) {
+      fetch(`${req.nextUrl.origin}/api/check-alert`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ alertId: data.id }),
+      }).catch(err => {
+        console.error('Failed to trigger immediate check:', err);
+        // Don't fail the alert creation if the check fails
+      });
+    }
+
     return NextResponse.json({ alert: data as Alert }, { status: 201 });
   } catch (error) {
     console.error('Unexpected error:', error);
