@@ -1,4 +1,4 @@
-name: Check HOPR Reservations
+name: Check Reservations
 
 on:
   schedule:
@@ -11,8 +11,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Trigger reservation check
+      - name: Trigger HOPR reservation check
         run: |
           curl -X GET "${{ secrets.VERCEL_DEPLOYMENT_URL }}/api/cron" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json"
+
+      - name: Trigger BBB reservation check
+        run: |
+          curl -X GET "${{ secrets.VERCEL_DEPLOYMENT_URL }}/api/bbb/cron" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             -H "Content-Type: application/json"
