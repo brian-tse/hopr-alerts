@@ -226,31 +226,52 @@ async function selectDate(page: any, targetDate: string): Promise<boolean> {
   const targetMonth = targetDateObj.getMonth();
   const targetYear = targetDateObj.getFullYear();
 
-  // Navigate to correct month
-  for (let i = 0; i < 12; i++) {
+  console.log(`Looking for ${targetMonth + 1}/${targetDay}/${targetYear}`);
+
+  // Wait for calendar to be visible
+  try {
+    await page.waitForSelector('button', { timeout: 10000 });
+  } catch (e) {
+    console.log('Calendar not found');
+    return false;
+  }
+
+  // Navigate to correct month (with timeout per iteration)
+  for (let i = 0; i < 6; i++) {
     try {
-      const monthYearText = await page.locator('text=/[A-Z][a-z]+ \\d{4}/').first().textContent();
+      // Look for month/year text with timeout
+      const monthYearLocator = page.locator('text=/[A-Z][a-z]+ \\d{4}/').first();
+      const monthYearText = await monthYearLocator.textContent({ timeout: 3000 });
+
       if (monthYearText) {
+        console.log(`Current calendar shows: ${monthYearText}`);
         const displayedDate = new Date(monthYearText + ' 1');
         if (displayedDate.getMonth() === targetMonth && displayedDate.getFullYear() === targetYear) {
+          console.log('Found correct month');
           break;
         }
       }
     } catch (e) {
-      // Continue
+      console.log('Could not read month/year, trying to navigate anyway');
     }
 
-    // Click next month
+    // Click next month button
+    console.log('Clicking next month...');
     try {
-      await page.click('button[aria-label*="next"]');
+      const nextBtn = page.locator('button[aria-label*="next"], button[aria-label*="Next"], button:has-text(">")').first();
+      await nextBtn.click({ timeout: 3000 });
+      await page.waitForTimeout(1000);
     } catch (e) {
-      await page.click('button:has-text(">")').catch(() => {});
+      console.log('Could not click next month button');
+      break;
     }
-    await page.waitForTimeout(500);
   }
 
   // Click on the target day
+  console.log(`Looking for day ${targetDay}...`);
   const dayButtons = await page.$$('button');
+  console.log(`Found ${dayButtons.length} buttons to check`);
+
   for (const button of dayButtons) {
     try {
       const text = await button.textContent();
@@ -258,8 +279,12 @@ async function selectDate(page: any, targetDate: string): Promise<boolean> {
         const isDisabled = await button.getAttribute('disabled');
         const ariaDisabled = await button.getAttribute('aria-disabled');
         if (!isDisabled && ariaDisabled !== 'true') {
+          console.log(`Clicking on day ${targetDay}`);
           await button.click();
+          await page.waitForTimeout(1000);
           return true;
+        } else {
+          console.log(`Day ${targetDay} is disabled`);
         }
       }
     } catch (e) {
@@ -267,6 +292,7 @@ async function selectDate(page: any, targetDate: string): Promise<boolean> {
     }
   }
 
+  console.log(`Could not find clickable day ${targetDay}`);
   return false;
 }
 
