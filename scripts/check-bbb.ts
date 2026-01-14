@@ -314,43 +314,73 @@ async function selectDate(page: any, targetDate: string): Promise<boolean> {
     }
   }
 
-  // Click on the target day
+  // Click on the target day - try multiple selector strategies
   console.log(`Looking for day ${targetDay}...`);
-  const dayButtons = await page.$$('button');
-  console.log(`Found ${dayButtons.length} buttons to check`);
 
-  // Log all button text content to understand what we're looking at
-  const buttonTexts: string[] = [];
-  for (const button of dayButtons) {
+  // Strategy 1: Look for elements with exact day number text using Playwright locator
+  try {
+    // Try common calendar selectors
+    const daySelectors = [
+      `[data-day="${targetDay}"]`,
+      `[data-date*="${targetDay}"]`,
+      `.day:has-text("${targetDay}")`,
+      `.calendar-day:has-text("${targetDay}")`,
+      `td:has-text("${targetDay}")`,
+      `[role="gridcell"]:has-text("${targetDay}")`,
+      `[role="button"]:has-text("${targetDay}")`,
+    ];
+
+    for (const selector of daySelectors) {
+      const elements = await page.locator(selector).all();
+      if (elements.length > 0) {
+        console.log(`Found ${elements.length} element(s) with selector: ${selector}`);
+        for (const element of elements) {
+          const text = await element.textContent();
+          console.log(`  Element text: "${text?.trim()}"`);
+        }
+      }
+    }
+  } catch (e) {
+    console.log('Error with selector strategies');
+  }
+
+  // Strategy 2: Look for any element with exact text matching the day number
+  try {
+    // Use text locator to find exact match
+    const exactMatch = page.locator(`text="${targetDay}"`).first();
+    const matchText = await exactMatch.textContent({ timeout: 2000 }).catch(() => null);
+    if (matchText) {
+      console.log(`Found exact text match: "${matchText.trim()}"`);
+      const tagName = await exactMatch.evaluate((el: Element) => el.tagName.toLowerCase());
+      console.log(`  Tag name: ${tagName}`);
+
+      // Try to click it
+      await exactMatch.click({ timeout: 3000 });
+      await page.waitForTimeout(1000);
+      return true;
+    }
+  } catch (e) {
+    console.log('Could not find or click exact text match');
+  }
+
+  // Strategy 3: Log all clickable elements to understand the page structure
+  console.log('Searching for clickable elements with numeric text...');
+  const clickable = await page.$$('[role="button"], [onclick], a, button, [tabindex="0"]');
+  console.log(`Found ${clickable.length} potentially clickable elements`);
+
+  const clickableWithNumbers: string[] = [];
+  for (const el of clickable) {
     try {
-      const text = await button.textContent();
-      if (text) {
-        buttonTexts.push(text.trim().substring(0, 30)); // First 30 chars of each
+      const text = await el.textContent();
+      if (text && /^\d+$/.test(text.trim())) {
+        clickableWithNumbers.push(text.trim());
       }
     } catch (e) {
       // continue
     }
   }
-  console.log(`Button texts: ${buttonTexts.join(' | ')}`);
-
-  for (const button of dayButtons) {
-    try {
-      const text = await button.textContent();
-      if (text && text.trim() === targetDay.toString()) {
-        const isDisabled = await button.getAttribute('disabled');
-        const ariaDisabled = await button.getAttribute('aria-disabled');
-        if (!isDisabled && ariaDisabled !== 'true') {
-          console.log(`Clicking on day ${targetDay}`);
-          await button.click();
-          await page.waitForTimeout(1000);
-          return true;
-        } else {
-          console.log(`Day ${targetDay} is disabled`);
-        }
-      }
-    } catch (e) {
-      continue;
-    }
+  if (clickableWithNumbers.length > 0) {
+    console.log(`Clickable elements with numeric text: ${clickableWithNumbers.join(', ')}`);
   }
 
   console.log(`Could not find clickable day ${targetDay}`);
