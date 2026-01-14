@@ -231,10 +231,21 @@ async function scrapeDisney(alert: BBBAlert): Promise<BBBSlot[]> {
     });
     console.log(`Div IDs on page: ${divIds.join(', ')}`);
 
-    // Log the raw HTML structure (first 2000 chars)
+    // Log the raw HTML structure
     const html = await page.content();
     console.log(`HTML length: ${html.length}`);
-    console.log(`HTML snippet (first 2000 chars): ${html.substring(0, 2000)}`);
+
+    // Look for the body content specifically
+    const bodyHtml = html.match(/<body[^>]*>([\s\S]*?)<\/body>/)?.[1] || '';
+    console.log(`Body HTML length: ${bodyHtml.length}`);
+    console.log(`Body HTML (first 3000 chars): ${bodyHtml.substring(0, 3000)}`);
+
+    // Check for noscript tags which might indicate JS dependency
+    const noscriptContent = html.match(/<noscript[^>]*>([\s\S]*?)<\/noscript>/g) || [];
+    console.log(`Noscript tags: ${noscriptContent.length}`);
+    if (noscriptContent.length > 0) {
+      console.log(`First noscript content: ${noscriptContent[0]?.substring(0, 500)}`);
+    }
 
     // Check for React or app root elements
     const appRoot = await page.locator('#__next, #root, #app, [data-reactroot]').count();
