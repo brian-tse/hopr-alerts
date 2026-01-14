@@ -319,6 +319,20 @@ async function selectDate(page: any, targetDate: string): Promise<boolean> {
   const dayButtons = await page.$$('button');
   console.log(`Found ${dayButtons.length} buttons to check`);
 
+  // Log all button text content to understand what we're looking at
+  const buttonTexts: string[] = [];
+  for (const button of dayButtons) {
+    try {
+      const text = await button.textContent();
+      if (text) {
+        buttonTexts.push(text.trim().substring(0, 30)); // First 30 chars of each
+      }
+    } catch (e) {
+      // continue
+    }
+  }
+  console.log(`Button texts: ${buttonTexts.join(' | ')}`);
+
   for (const button of dayButtons) {
     try {
       const text = await button.textContent();
