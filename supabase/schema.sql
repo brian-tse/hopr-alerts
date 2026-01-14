@@ -19,6 +19,9 @@ create table public.hopr_alerts (
 -- Check history table - logs every check attempt for monitoring and debugging
 create table public.hopr_check_history (
   id uuid primary key default uuid_generate_v4(),
+  alert_id uuid references hopr_alerts(id) on delete cascade,
+  target_date date,
+  slots_found int default 0,
   check_time timestamptz not null default now(),
   found_slots jsonb not null default '[]'::jsonb,
   error_message text,
