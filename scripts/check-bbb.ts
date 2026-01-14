@@ -173,18 +173,35 @@ async function scrapeDisney(alert: BBBAlert): Promise<BBBSlot[]> {
     // Navigate to booking page with retry
     console.log('Navigating to Disney booking page...');
     await page.goto(BBB_BOOKING_URL, {
-      waitUntil: 'domcontentloaded',
+      waitUntil: 'networkidle',
       timeout: 60000
     });
 
     // Wait for page to stabilize
-    await page.waitForTimeout(5000);
+    await page.waitForTimeout(8000);
+
+    // Debug: Log page info
+    const pageTitle = await page.title();
+    const pageUrl = page.url();
+    console.log(`Page title: ${pageTitle}`);
+    console.log(`Page URL: ${pageUrl}`);
 
     // Check if we got blocked
     const pageContent = await page.content();
     if (pageContent.includes('Access Denied') || pageContent.includes('blocked') || pageContent.includes('captcha')) {
       throw new Error('Access blocked by Disney - possible bot detection');
     }
+
+    // Debug: Check what's on the page
+    const bodyText = await page.locator('body').innerText().catch(() => '');
+    console.log(`Page text (first 500 chars): ${bodyText.substring(0, 500)}`);
+
+    // Check for common Disney page elements
+    const hasForm = await page.locator('form').count();
+    const hasInput = await page.locator('input').count();
+    const hasSelect = await page.locator('select').count();
+    const buttonCount = await page.locator('button').count();
+    console.log(`Page has: ${hasForm} forms, ${hasInput} inputs, ${hasSelect} selects, ${buttonCount} buttons`);
 
     // Step 1: Select date
     console.log(`Selecting date: ${alert.target_date}`);
