@@ -170,6 +170,17 @@ async function scrapeDisney(alert: BBBAlert): Promise<BBBSlot[]> {
 
     const page = await context.newPage();
 
+    // Enable console logging to see JavaScript errors
+    page.on('console', (msg: any) => {
+      if (msg.type() === 'error' || msg.type() === 'warn') {
+        console.log(`Browser ${msg.type()}: ${msg.text()}`);
+      }
+    });
+
+    page.on('pageerror', (err: Error) => {
+      console.log(`Page error: ${err.message}`);
+    });
+
     // Navigate to booking page with retry
     console.log('Navigating to Disney booking page...');
     await page.goto(BBB_BOOKING_URL, {
@@ -243,9 +254,17 @@ async function scrapeDisney(alert: BBBAlert): Promise<BBBSlot[]> {
     // Check for noscript tags which might indicate JS dependency
     const noscriptContent = html.match(/<noscript[^>]*>([\s\S]*?)<\/noscript>/g) || [];
     console.log(`Noscript tags: ${noscriptContent.length}`);
-    if (noscriptContent.length > 0) {
-      console.log(`First noscript content: ${noscriptContent[0]?.substring(0, 500)}`);
+    for (const noscript of noscriptContent) {
+      console.log(`Noscript content: ${noscript.substring(0, 1000)}`);
     }
+
+    // Check what's inside the body (first div structure)
+    const firstDivs = bodyHtml.match(/<div[^>]*>/g) || [];
+    console.log(`First 10 div tags: ${firstDivs.slice(0, 10).join(' ')}`);
+
+    // Check for loading indicators or app container
+    const loadingIndicators = await page.locator('text=/loading|spinner|please wait/i').count();
+    console.log(`Loading indicators: ${loadingIndicators}`);
 
     // Check for React or app root elements
     const appRoot = await page.locator('#__next, #root, #app, [data-reactroot]').count();
