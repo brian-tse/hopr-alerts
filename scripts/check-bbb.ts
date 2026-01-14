@@ -231,6 +231,19 @@ async function scrapeDisney(alert: BBBAlert): Promise<BBBSlot[]> {
     });
     console.log(`Div IDs on page: ${divIds.join(', ')}`);
 
+    // Log the raw HTML structure (first 2000 chars)
+    const html = await page.content();
+    console.log(`HTML length: ${html.length}`);
+    console.log(`HTML snippet (first 2000 chars): ${html.substring(0, 2000)}`);
+
+    // Check for React or app root elements
+    const appRoot = await page.locator('#__next, #root, #app, [data-reactroot]').count();
+    console.log(`React/App root elements: ${appRoot}`);
+
+    // Check for script tags
+    const scriptCount = await page.locator('script').count();
+    console.log(`Script tags: ${scriptCount}`);
+
     // Step 1: Select date
     console.log(`Selecting date: ${alert.target_date}`);
     const dateSelected = await selectDate(page, alert.target_date);
