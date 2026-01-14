@@ -7,9 +7,8 @@ on:
   workflow_dispatch: # Allow manual triggers
 
 jobs:
-  check-reservations:
+  check-hopr:
     runs-on: ubuntu-latest
-
     steps:
       - name: Trigger HOPR reservation check
         run: |
@@ -17,8 +16,25 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             -H "Content-Type: application/json"
 
-      - name: Trigger BBB reservation check
-        run: |
-          curl -X GET "${{ secrets.VERCEL_DEPLOYMENT_URL }}/api/bbb/cron" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            -H "Content-Type: application/json"
+  check-bbb:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium
+
+      - name: Run BBB scraper
+        env:
+          VERCEL_DEPLOYMENT_URL: ${{ secrets.VERCEL_DEPLOYMENT_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: npx tsx scripts/check-bbb.ts
