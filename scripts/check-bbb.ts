@@ -203,6 +203,34 @@ async function scrapeDisney(alert: BBBAlert): Promise<BBBSlot[]> {
     const buttonCount = await page.locator('button').count();
     console.log(`Page has: ${hasForm} forms, ${hasInput} inputs, ${hasSelect} selects, ${buttonCount} buttons`);
 
+    // Check for iframes
+    const iframeCount = await page.locator('iframe').count();
+    console.log(`Page has ${iframeCount} iframes`);
+
+    // If there are iframes, try to find the booking iframe
+    if (iframeCount > 0) {
+      const frames = page.frames();
+      console.log(`Found ${frames.length} frames total`);
+      for (let i = 0; i < frames.length; i++) {
+        const frame = frames[i];
+        const frameName = frame.name() || 'unnamed';
+        const frameUrl = frame.url();
+        console.log(`Frame ${i}: name='${frameName}', url='${frameUrl}'`);
+      }
+    }
+
+    // Check for shadow DOM elements
+    const shadowHostCount = await page.locator('*').evaluateAll((elements) => {
+      return elements.filter(el => el.shadowRoot).length;
+    });
+    console.log(`Page has ${shadowHostCount} shadow DOM hosts`);
+
+    // Log all div IDs to understand page structure
+    const divIds = await page.locator('div[id]').evaluateAll((elements) => {
+      return elements.map(el => el.id).slice(0, 20);
+    });
+    console.log(`Div IDs on page: ${divIds.join(', ')}`);
+
     // Step 1: Select date
     console.log(`Selecting date: ${alert.target_date}`);
     const dateSelected = await selectDate(page, alert.target_date);
