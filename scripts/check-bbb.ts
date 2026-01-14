@@ -1,4 +1,4 @@
-import { chromium } from 'playwright';
+import { chromium, Browser } from 'playwright';
 
 type TimePeriod = 'morning' | 'afternoon' | 'evening';
 
@@ -19,6 +19,10 @@ interface BBBSlot {
 const BBB_BOOKING_URL = 'https://disneyland.disney.go.com/enchanting-extras-collection/booking-bibbidi-bobbidi-boutique/';
 const API_BASE_URL = process.env.VERCEL_DEPLOYMENT_URL || 'https://hopr-alerts.vercel.app';
 const CRON_SECRET = process.env.CRON_SECRET;
+
+// Retry configuration
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 5000;
 
 async function main() {
   if (!CRON_SECRET) {
@@ -53,40 +57,134 @@ async function main() {
   for (const alert of alerts) {
     console.log(`\nProcessing alert ${alert.id}: ${alert.target_date}, ${alert.num_guests} guest(s), periods: ${alert.time_preferences.join(', ')}`);
 
-    try {
-      const slots = await scrapeDisney(alert);
+    let lastError: Error | null = null;
+    let slots: BBBSlot[] = [];
 
-      // Report results to API
+    // Retry loop
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        console.log(`Attempt ${attempt}/${MAX_RETRIES}...`);
+        slots = await scrapeDisney(alert);
+        lastError = null;
+        break; // Success, exit retry loop
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        console.error(`Attempt ${attempt} failed:`, lastError.message);
+
+        if (attempt < MAX_RETRIES) {
+          console.log(`Waiting ${RETRY_DELAY_MS}ms before retry...`);
+          await sleep(RETRY_DELAY_MS);
+        }
+      }
+    }
+
+    if (lastError) {
+      // All retries failed
+      await reportResults(alert.id, [], 'all', lastError.message);
+    } else {
+      // Success
       await reportResults(alert.id, slots, alert.time_preferences.join(','));
-
-    } catch (error) {
-      console.error(`Error processing alert ${alert.id}:`, error);
-      // Report error to API
-      await reportResults(alert.id, [], 'all', error instanceof Error ? error.message : 'Unknown error');
     }
   }
 
   console.log('\nDone!');
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 async function scrapeDisney(alert: BBBAlert): Promise<BBBSlot[]> {
   const allSlots: BBBSlot[] = [];
 
-  console.log('Launching browser...');
-  const browser = await chromium.launch({ headless: true });
+  console.log('Launching browser with stealth settings...');
+
+  const browser = await chromium.launch({
+    headless: true,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-accelerated-2d-canvas',
+      '--no-first-run',
+      '--no-zygote',
+      '--disable-gpu',
+      '--disable-blink-features=AutomationControlled',
+    ],
+  });
 
   try {
     const context = await browser.newContext({
-      viewport: { width: 1280, height: 720 },
-      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      viewport: { width: 1920, height: 1080 },
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+      locale: 'en-US',
+      timezoneId: 'America/Los_Angeles',
+      geolocation: { latitude: 33.8121, longitude: -117.9190 }, // Anaheim, CA
+      permissions: ['geolocation'],
+      extraHTTPHeaders: {
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
+        'Sec-Ch-Ua': '"Not A(Brand";v="99", "Google Chrome";v="121", "Chromium";v="121"',
+        'Sec-Ch-Ua-Mobile': '?0',
+        'Sec-Ch-Ua-Platform': '"Windows"',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Upgrade-Insecure-Requests': '1',
+      },
+    });
+
+    // Add stealth scripts to evade detection
+    await context.addInitScript(() => {
+      // Override webdriver property
+      Object.defineProperty(navigator, 'webdriver', {
+        get: () => undefined,
+      });
+
+      // Override plugins
+      Object.defineProperty(navigator, 'plugins', {
+        get: () => [1, 2, 3, 4, 5],
+      });
+
+      // Override languages
+      Object.defineProperty(navigator, 'languages', {
+        get: () => ['en-US', 'en'],
+      });
+
+      // Override chrome property
+      (window as any).chrome = {
+        runtime: {},
+      };
+
+      // Override permissions
+      const originalQuery = window.navigator.permissions.query;
+      window.navigator.permissions.query = (parameters: any) =>
+        parameters.name === 'notifications'
+          ? Promise.resolve({ state: 'prompt', onchange: null } as PermissionStatus)
+          : originalQuery(parameters);
     });
 
     const page = await context.newPage();
 
-    // Navigate to booking page
+    // Navigate to booking page with retry
     console.log('Navigating to Disney booking page...');
-    await page.goto(BBB_BOOKING_URL, { waitUntil: 'networkidle', timeout: 60000 });
-    await page.waitForTimeout(3000);
+    await page.goto(BBB_BOOKING_URL, {
+      waitUntil: 'domcontentloaded',
+      timeout: 60000
+    });
+
+    // Wait for page to stabilize
+    await page.waitForTimeout(5000);
+
+    // Check if we got blocked
+    const pageContent = await page.content();
+    if (pageContent.includes('Access Denied') || pageContent.includes('blocked') || pageContent.includes('captcha')) {
+      throw new Error('Access blocked by Disney - possible bot detection');
+    }
 
     // Step 1: Select date
     console.log(`Selecting date: ${alert.target_date}`);
@@ -97,7 +195,7 @@ async function scrapeDisney(alert: BBBAlert): Promise<BBBSlot[]> {
 
     // Click Next
     await page.click('button:has-text("Next")');
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(3000);
 
     // Step 2: Set guest count
     console.log(`Setting guest count to: ${alert.num_guests}`);
@@ -105,7 +203,7 @@ async function scrapeDisney(alert: BBBAlert): Promise<BBBSlot[]> {
 
     // Click Next
     await page.click('button:has-text("Next")');
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(3000);
 
     // Step 3: Check each time period
     for (const period of alert.time_preferences) {
