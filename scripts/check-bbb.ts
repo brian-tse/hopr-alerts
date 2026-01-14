@@ -447,12 +447,63 @@ async function selectDate(page: any, targetDate: string): Promise<boolean> {
 }
 
 async function setGuestCount(page: any, numGuests: number): Promise<void> {
-  // Default is 1, click + to increase
-  const plusButton = page.locator('button:has-text("+")').first();
-  for (let i = 1; i < numGuests; i++) {
-    await plusButton.click();
-    await page.waitForTimeout(300);
+  console.log(`Looking for guest count selector...`);
+
+  // Try multiple strategies to set guest count
+
+  // Strategy 1: Look for a dropdown/select for party size
+  try {
+    const selectEl = page.locator('select').first();
+    if (await selectEl.isVisible({ timeout: 2000 })) {
+      await selectEl.selectOption({ value: String(numGuests) });
+      console.log(`Selected ${numGuests} from dropdown`);
+      return;
+    }
+  } catch (e) {
+    // Continue to next strategy
   }
+
+  // Strategy 2: Look for + button to increment
+  try {
+    const plusButton = page.locator('button:has-text("+"), button[aria-label*="increase"], button[aria-label*="add"]').first();
+    if (await plusButton.isVisible({ timeout: 2000 })) {
+      for (let i = 1; i < numGuests; i++) {
+        await plusButton.click();
+        await page.waitForTimeout(300);
+      }
+      console.log(`Clicked + button ${numGuests - 1} times`);
+      return;
+    }
+  } catch (e) {
+    // Continue to next strategy
+  }
+
+  // Strategy 3: Look for input field to type number
+  try {
+    const inputEl = page.locator('input[type="number"], input[aria-label*="guest"], input[aria-label*="participant"]').first();
+    if (await inputEl.isVisible({ timeout: 2000 })) {
+      await inputEl.fill(String(numGuests));
+      console.log(`Filled input with ${numGuests}`);
+      return;
+    }
+  } catch (e) {
+    // Continue
+  }
+
+  // Strategy 4: Look for participant count buttons (common in Disney booking)
+  try {
+    // Look for buttons with numbers
+    const numButton = page.locator(`button:has-text("${numGuests}")`).first();
+    if (await numButton.isVisible({ timeout: 2000 })) {
+      await numButton.click();
+      console.log(`Clicked button with ${numGuests}`);
+      return;
+    }
+  } catch (e) {
+    // Continue
+  }
+
+  console.log(`Could not find guest count selector, default guest count may be used`);
 }
 
 async function checkTimePeriod(page: any, period: TimePeriod): Promise<BBBSlot[]> {
