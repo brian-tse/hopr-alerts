@@ -110,6 +110,7 @@ async function scrapeDisney(alert: BBBAlert): Promise<BBBSlot[]> {
       '--no-zygote',
       '--disable-gpu',
       '--disable-blink-features=AutomationControlled',
+      '--disable-http2', // Try HTTP/1.1 instead of HTTP/2
     ],
   });
 
@@ -121,9 +122,10 @@ async function scrapeDisney(alert: BBBAlert): Promise<BBBSlot[]> {
       timezoneId: 'America/Los_Angeles',
       geolocation: { latitude: 33.8121, longitude: -117.9190 }, // Anaheim, CA
       permissions: ['geolocation'],
-      // Minimal headers to avoid triggering CORS preflight
+      // Standard browser headers (avoid custom headers that trigger CORS preflight)
       extraHTTPHeaders: {
         'Accept-Language': 'en-US,en;q=0.9',
+        'Upgrade-Insecure-Requests': '1',
       },
     });
 
