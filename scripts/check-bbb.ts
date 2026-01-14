@@ -1,4 +1,4 @@
-import { chromium, Browser } from 'playwright';
+import { firefox, Browser } from 'playwright';
 
 type TimePeriod = 'morning' | 'afternoon' | 'evening';
 
@@ -99,19 +99,9 @@ async function scrapeDisney(alert: BBBAlert): Promise<BBBSlot[]> {
 
   console.log('Launching browser with stealth settings...');
 
-  const browser = await chromium.launch({
+  // Use Firefox instead of Chromium - better for sites with bot detection
+  const browser = await firefox.launch({
     headless: true,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-accelerated-2d-canvas',
-      '--no-first-run',
-      '--no-zygote',
-      '--disable-gpu',
-      '--disable-blink-features=AutomationControlled',
-      '--disable-http2', // Try HTTP/1.1 instead of HTTP/2
-    ],
   });
 
   try {
@@ -129,34 +119,12 @@ async function scrapeDisney(alert: BBBAlert): Promise<BBBSlot[]> {
       },
     });
 
-    // Add stealth scripts to evade detection
+    // Firefox has better stealth by default, minimal overrides needed
     await context.addInitScript(() => {
       // Override webdriver property
       Object.defineProperty(navigator, 'webdriver', {
         get: () => undefined,
       });
-
-      // Override plugins
-      Object.defineProperty(navigator, 'plugins', {
-        get: () => [1, 2, 3, 4, 5],
-      });
-
-      // Override languages
-      Object.defineProperty(navigator, 'languages', {
-        get: () => ['en-US', 'en'],
-      });
-
-      // Override chrome property
-      (window as any).chrome = {
-        runtime: {},
-      };
-
-      // Override permissions
-      const originalQuery = window.navigator.permissions.query;
-      window.navigator.permissions.query = (parameters: any) =>
-        parameters.name === 'notifications'
-          ? Promise.resolve({ state: 'prompt', onchange: null } as PermissionStatus)
-          : originalQuery(parameters);
     });
 
     const page = await context.newPage();

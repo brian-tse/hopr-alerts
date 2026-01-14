@@ -31,7 +31,7 @@ jobs:
         run: npm ci
 
       - name: Install Playwright browsers
-        run: npx playwright install chromium
+        run: npx playwright install firefox --with-deps
 
       - name: Run BBB scraper
         env:
