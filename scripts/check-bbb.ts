@@ -240,17 +240,56 @@ async function scrapeDisney(alert: BBBAlert): Promise<BBBSlot[]> {
       throw new Error('Failed to select date');
     }
 
-    // Click Next
-    await page.click('button:has-text("Next")');
-    await page.waitForTimeout(3000);
+    // Wait for UI to update after date selection
+    await page.waitForTimeout(2000);
+
+    // Debug: What buttons are visible now?
+    const buttonsAfterDate = await page.locator('button').allTextContents();
+    console.log(`Buttons after date selection: ${buttonsAfterDate.filter(t => t.trim()).join(' | ')}`);
+
+    // Try to click Next/Continue button (various possible labels)
+    let nextClicked = false;
+    for (const buttonText of ['Next', 'Continue', 'Select', 'Confirm']) {
+      try {
+        const btn = page.locator(`button:has-text("${buttonText}")`).first();
+        if (await btn.isVisible({ timeout: 2000 })) {
+          console.log(`Clicking "${buttonText}" button...`);
+          await btn.click({ timeout: 5000 });
+          nextClicked = true;
+          await page.waitForTimeout(2000);
+          break;
+        }
+      } catch (e) {
+        // Try next button text
+      }
+    }
+    if (!nextClicked) {
+      console.log('No Next/Continue button found, proceeding anyway');
+    }
 
     // Step 2: Set guest count
     console.log(`Setting guest count to: ${alert.num_guests}`);
     await setGuestCount(page, alert.num_guests);
 
-    // Click Next
-    await page.click('button:has-text("Next")');
-    await page.waitForTimeout(3000);
+    // Try to click Next/Continue again
+    nextClicked = false;
+    for (const buttonText of ['Next', 'Continue', 'Select', 'Confirm', 'Check Availability', 'Search']) {
+      try {
+        const btn = page.locator(`button:has-text("${buttonText}")`).first();
+        if (await btn.isVisible({ timeout: 2000 })) {
+          console.log(`Clicking "${buttonText}" button...`);
+          await btn.click({ timeout: 5000 });
+          nextClicked = true;
+          await page.waitForTimeout(2000);
+          break;
+        }
+      } catch (e) {
+        // Try next button text
+      }
+    }
+    if (!nextClicked) {
+      console.log('No Next/Continue button found after guest count');
+    }
 
     // Step 3: Check each time period
     for (const period of alert.time_preferences) {
