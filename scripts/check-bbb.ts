@@ -344,23 +344,43 @@ async function selectDate(page: any, targetDate: string): Promise<boolean> {
     console.log('Error with selector strategies');
   }
 
-  // Strategy 2: Look for any element with exact text matching the day number
+  // Strategy 2: Click via data-date attribute (most reliable)
   try {
-    // Use text locator to find exact match
-    const exactMatch = page.locator(`text="${targetDay}"`).first();
-    const matchText = await exactMatch.textContent({ timeout: 2000 }).catch(() => null);
-    if (matchText) {
-      console.log(`Found exact text match: "${matchText.trim()}"`);
-      const tagName = await exactMatch.evaluate((el: Element) => el.tagName.toLowerCase());
-      console.log(`  Tag name: ${tagName}`);
+    // Format the date to match what Disney might use (YYYY-MM-DD)
+    const dateStr = `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}`;
+    console.log(`Looking for data-date containing: ${dateStr} or ${targetDay}`);
 
-      // Try to click it
-      await exactMatch.click({ timeout: 3000 });
+    // Try clicking the td or element with data-date
+    const dataDateEl = page.locator(`[data-date*="${targetDay}"]`).first();
+    const dataDateCount = await page.locator(`[data-date*="${targetDay}"]`).count();
+    console.log(`Found ${dataDateCount} elements with data-date*="${targetDay}"`);
+
+    if (dataDateCount > 0) {
+      const dataDateValue = await dataDateEl.getAttribute('data-date');
+      console.log(`  data-date value: ${dataDateValue}`);
+      await dataDateEl.click({ force: true, timeout: 5000 });
+      console.log('Clicked on data-date element');
       await page.waitForTimeout(1000);
       return true;
     }
   } catch (e) {
-    console.log('Could not find or click exact text match');
+    console.log(`Error clicking data-date element: ${e}`);
+  }
+
+  // Strategy 3: Click the td containing the day
+  try {
+    const tdEl = page.locator(`td:has-text("${targetDay}")`).first();
+    const tdCount = await page.locator(`td:has-text("${targetDay}")`).count();
+    console.log(`Found ${tdCount} td elements with text "${targetDay}"`);
+
+    if (tdCount > 0) {
+      await tdEl.click({ force: true, timeout: 5000 });
+      console.log('Clicked on td element');
+      await page.waitForTimeout(1000);
+      return true;
+    }
+  } catch (e) {
+    console.log(`Error clicking td element: ${e}`);
   }
 
   // Strategy 3: Log all clickable elements to understand the page structure
