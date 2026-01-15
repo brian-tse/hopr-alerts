@@ -65,31 +65,82 @@ export async function scrapeOpenTable(
     await page.waitForTimeout(2000);
 
     // Try to select the target date
-    const targetDay = new Date(targetDate).getDate();
-    console.log(`Looking for date: ${targetDay}`);
+    // Parse target date in local time to get correct day
+    const [year, month, day] = targetDate.split('-').map(Number);
+    const targetDateObj = new Date(year, month - 1, day);
+    const targetDay = targetDateObj.getDate();
+    const targetMonth = targetDateObj.getMonth();
+    console.log(`Looking for date: ${targetDay} (month index: ${targetMonth})`);
 
-    const dateButtons = await page.$$('button');
+    // First, navigate to the correct month if needed
+    // Look for calendar navigation within the date picker popup
+    const calendarContainer = page.locator('[data-test="calendar"], [role="dialog"], .calendar, .date-picker').first();
+
+    // Try to find and click the correct date within calendar day buttons
+    // Use more specific selectors for calendar day buttons
+    const daySelectors = [
+      `[data-test="calendar-day-${targetDay}"]`,
+      `[aria-label*="${targetDay}"]`,
+      `button[data-day="${targetDay}"]`,
+      `.calendar button:has-text("${targetDay}")`,
+      `[role="gridcell"] button:has-text("${targetDay}")`,
+    ];
+
     let dateClicked = false;
 
-    for (const button of dateButtons) {
+    // First try specific selectors
+    for (const selector of daySelectors) {
       try {
-        const text = await button.textContent();
-        if (text && text.trim() === targetDay.toString()) {
-          const isDisabled = await button.getAttribute('disabled');
-          if (!isDisabled) {
-            await button.click();
+        const dayButton = page.locator(selector).first();
+        if (await dayButton.isVisible({ timeout: 1000 })) {
+          const isDisabled = await dayButton.getAttribute('disabled');
+          const ariaDisabled = await dayButton.getAttribute('aria-disabled');
+          if (!isDisabled && ariaDisabled !== 'true') {
+            await dayButton.click();
             dateClicked = true;
-            console.log(`Clicked date ${targetDay}`);
+            console.log(`Clicked date ${targetDay} using selector: ${selector}`);
             break;
           }
         }
       } catch (e) {
-        // Continue
+        // Try next selector
+      }
+    }
+
+    // Fallback: search through buttons but be more careful
+    if (!dateClicked) {
+      const dateButtons = await page.$$('button');
+      for (const button of dateButtons) {
+        try {
+          const text = await button.textContent();
+          // Only match if button text is exactly the day number (no extra text)
+          if (text && text.trim() === targetDay.toString()) {
+            // Additional check: verify this looks like a calendar button
+            const className = (await button.getAttribute('class')) || '';
+            const ariaLabel = (await button.getAttribute('aria-label')) || '';
+            const isCalendarButton = className.includes('day') ||
+              className.includes('calendar') ||
+              ariaLabel.includes(targetDay.toString());
+
+            const isDisabled = await button.getAttribute('disabled');
+            const ariaDisabled = await button.getAttribute('aria-disabled');
+
+            if (!isDisabled && ariaDisabled !== 'true') {
+              await button.click();
+              dateClicked = true;
+              console.log(`Clicked date ${targetDay} via fallback search`);
+              break;
+            }
+          }
+        } catch (e) {
+          // Continue
+        }
       }
     }
 
     if (!dateClicked) {
-      console.log('Could not click specific date, using default');
+      // Instead of silently continuing, throw an error
+      throw new Error(`Failed to select date ${targetDate} - could not find clickable day button for day ${targetDay}`);
     }
 
     // Wait for times to load

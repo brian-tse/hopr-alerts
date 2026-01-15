@@ -33,7 +33,7 @@ export async function sendBBBNotification(
         .eq('alert_id', alert.id)
         .eq('reservation_date', alert.target_date)
         .eq('time_period', period)
-        .single();
+        .maybeSingle();
 
       if (existing) {
         console.log(

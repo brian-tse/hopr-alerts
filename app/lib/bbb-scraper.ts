@@ -107,52 +107,124 @@ export async function scrapeBBBAvailability(
 }
 
 async function selectDate(page: any, targetDate: string): Promise<boolean> {
-  const targetDateObj = new Date(targetDate + 'T12:00:00');
-  const targetDay = targetDateObj.getDate();
-  const targetMonth = targetDateObj.getMonth();
-  const targetYear = targetDateObj.getFullYear();
+  // Parse date string directly to avoid timezone issues
+  // targetDate is in YYYY-MM-DD format
+  const [year, month, day] = targetDate.split('-').map(Number);
+  const targetDay = day;
+  const targetMonth = month - 1; // JavaScript months are 0-indexed
+  const targetYear = year;
+
+  console.log(`Selecting date: ${targetDate} (day=${targetDay}, month=${targetMonth}, year=${targetYear})`);
+
+  // Month name mapping for parsing displayed month
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
 
   // Navigate to correct month if needed
   const maxNavigations = 12;
   for (let i = 0; i < maxNavigations; i++) {
     // Check current month displayed
-    const monthYearText = await page.locator('text=/[A-Z][a-z]+ \\d{4}/').first().textContent();
+    const monthYearLocator = page.locator('text=/[A-Z][a-z]+ \\d{4}/').first();
+    let monthYearText: string | null = null;
+
+    try {
+      monthYearText = await monthYearLocator.textContent({ timeout: 2000 });
+    } catch (e) {
+      await page.waitForTimeout(1000);
+      continue;
+    }
+
     if (!monthYearText) {
       await page.waitForTimeout(1000);
       continue;
     }
 
-    const currentMonth = new Date(monthYearText + ' 1').getMonth();
-    const currentYear = new Date(monthYearText + ' 1').getFullYear();
+    // Parse month and year from text like "February 2026"
+    const match = monthYearText.match(/([A-Z][a-z]+)\s+(\d{4})/);
+    if (!match) {
+      await page.waitForTimeout(500);
+      continue;
+    }
 
-    if (currentMonth === targetMonth && currentYear === targetYear) {
+    const displayedMonthName = match[1];
+    const displayedYear = parseInt(match[2]);
+    const displayedMonth = monthNames.indexOf(displayedMonthName);
+
+    console.log(`Calendar showing: ${displayedMonthName} ${displayedYear} (month index: ${displayedMonth})`);
+
+    if (displayedMonth === targetMonth && displayedYear === targetYear) {
       // Found the right month, now click the day
+      console.log('Found correct month');
       break;
     }
 
-    // Navigate forward
-    const nextButton = page.locator('button[aria-label*="next"], button:has(svg[aria-label*="chevron-right"])').first();
-    if (await nextButton.isVisible()) {
-      await nextButton.click();
-      await page.waitForTimeout(500);
+    // Determine if we need to go forward or backward
+    const currentDate = new Date(displayedYear, displayedMonth, 1);
+    const targetDateObj = new Date(targetYear, targetMonth, 1);
+
+    if (targetDateObj > currentDate) {
+      // Navigate forward
+      const nextButton = page.locator('button[aria-label*="next"], button[aria-label*="Next"], button:has(svg[aria-label*="chevron-right"])').first();
+      if (await nextButton.isVisible()) {
+        await nextButton.click();
+        await page.waitForTimeout(500);
+      } else {
+        // Try clicking a > arrow button
+        await page.click('button:has-text(">")').catch(() => {});
+        await page.waitForTimeout(500);
+      }
     } else {
-      // Try clicking the > arrow button
-      await page.click('button:has-text(">")').catch(() => {});
-      await page.waitForTimeout(500);
+      // Navigate backward
+      const prevButton = page.locator('button[aria-label*="prev"], button[aria-label*="Prev"], button:has(svg[aria-label*="chevron-left"])').first();
+      if (await prevButton.isVisible()) {
+        await prevButton.click();
+        await page.waitForTimeout(500);
+      } else {
+        await page.click('button:has-text("<")').catch(() => {});
+        await page.waitForTimeout(500);
+      }
     }
   }
 
-  // Click on the target day
+  // Try specific selectors for calendar day buttons first
+  const daySelectors = [
+    `[data-day="${targetDay}"]`,
+    `[aria-label*="${targetDay}"]`,
+    `button[data-test="day-${targetDay}"]`,
+    `[role="gridcell"] button:has-text("${targetDay}")`,
+  ];
+
+  for (const selector of daySelectors) {
+    try {
+      const dayButton = page.locator(selector).first();
+      if (await dayButton.isVisible({ timeout: 500 })) {
+        const isDisabled = await dayButton.getAttribute('disabled');
+        const ariaDisabled = await dayButton.getAttribute('aria-disabled');
+        if (!isDisabled && ariaDisabled !== 'true') {
+          await dayButton.click();
+          console.log(`Clicked on day ${targetDay} using selector: ${selector}`);
+          return true;
+        }
+      }
+    } catch (e) {
+      // Try next selector
+    }
+  }
+
+  // Fallback: search through buttons more carefully
   const dayButtons = await page.$$('button');
   for (const button of dayButtons) {
     try {
       const text = await button.textContent();
+      // Only match exact day number
       if (text && text.trim() === targetDay.toString()) {
         const isDisabled = await button.getAttribute('disabled');
         const ariaDisabled = await button.getAttribute('aria-disabled');
         if (!isDisabled && ariaDisabled !== 'true') {
           await button.click();
-          console.log(`Clicked on day ${targetDay}`);
+          console.log(`Clicked on day ${targetDay} via fallback search`);
           return true;
         }
       }
@@ -161,6 +233,7 @@ async function selectDate(page: any, targetDate: string): Promise<boolean> {
     }
   }
 
+  console.error(`Failed to find clickable button for day ${targetDay}`);
   return false;
 }
 

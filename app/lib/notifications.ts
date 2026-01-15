@@ -25,7 +25,7 @@ export async function sendAvailabilityNotification(
         .eq('alert_id', alert.id)
         .eq('reservation_date', slot.date)
         .eq('reservation_time', slot.time)
-        .single();
+        .maybeSingle();
 
       if (existing) {
         console.log(
